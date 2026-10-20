@@ -1,8 +1,9 @@
 package com.dilkhush.scoreboardvoting
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -40,22 +41,37 @@ class ScoreboardViewModel : ViewModel() {
     private val historyStack = mutableListOf<ScoreboardProject>()
 
     fun loadData(context: Context) {
-        val prefs = context.getSharedPreferences("scoreboard_prefs", Context.MODE_PRIVATE)
-        val json = prefs.getString("projects_data", "[]")
-        val type = object : TypeToken<List<ScoreboardProject>>() {}.type
-        projects = Gson().fromJson(json, type) ?: emptyList()
-        if (projects.isEmpty()) {
-            val default = ScoreboardProject()
-            projects = listOf(default)
-            currentProject = default
-        } else {
-            currentProject = projects.first()
+        try {
+            val prefs = context.getSharedPreferences("scoreboard_prefs", Context.MODE_PRIVATE)
+            val json = prefs.getString("projects_data", "[]")
+            if (json == "[]") {
+                setupDefault()
+                return
+            }
+            val type = object : TypeToken<List<ScoreboardProject>>() {}.type
+            val loaded: List<ScoreboardProject>? = Gson().fromJson(json, type)
+            if (loaded.isNullOrEmpty()) {
+                setupDefault()
+            } else {
+                projects = loaded
+                currentProject = projects.first()
+            }
+        } catch (e: Exception) {
+            setupDefault()
         }
     }
 
+    private fun setupDefault() {
+        val default = ScoreboardProject()
+        projects = listOf(default)
+        currentProject = default
+    }
+
     fun saveData(context: Context) {
-        val prefs = context.getSharedPreferences("scoreboard_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("projects_data", Gson().toJson(projects)).apply()
+        try {
+            val prefs = context.getSharedPreferences("scoreboard_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("projects_data", Gson().toJson(projects)).apply()
+        } catch (e: Exception) {}
     }
 
     fun addVote(player: Int, amount: Int) {
@@ -90,14 +106,27 @@ class ScoreboardViewModel : ViewModel() {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                val viewModel: ScoreboardViewModel = viewModel()
-                val context = LocalContext.current
-                LaunchedEffect(Unit) { viewModel.loadData(context) }
-                DisposableEffect(Unit) { onDispose { viewModel.saveData(context) } }
-                ScoreboardScreen(viewModel)
+        try {
+            setContent {
+                MaterialTheme {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF1E1E1E)) {
+                        val viewModel: ScoreboardViewModel = viewModel()
+                        val context = LocalContext.current
+                        LaunchedEffect(Unit) { viewModel.loadData(context) }
+                        DisposableEffect(Unit) { onDispose { viewModel.saveData(context) } }
+                        ScoreboardScreen(viewModel)
+                    }
+                }
             }
+        } catch (e: Exception) {
+            // CRASH SCANNER: अगर कुछ भी फेल हुआ, तो ऐप बंद नहीं होगा, स्क्रीन पर लाल रंग में एरर बता देगा!
+            val sv = ScrollView(this)
+            val tv = TextView(this)
+            tv.text = "CRASH DETECTED:\n\n${e.message}\n\n${e.stackTraceToString()}"
+            tv.setTextColor(android.graphics.Color.RED)
+            tv.setPadding(32, 32, 32, 32)
+            sv.addView(tv)
+            setContentView(sv)
         }
     }
 }
@@ -106,8 +135,9 @@ class MainActivity : ComponentActivity() {
 fun ScoreboardScreen(viewModel: ScoreboardViewModel) {
     val project = viewModel.currentProject
     val totalVotes = project.p1Votes + project.p2Votes
-    val p1Percent = if (totalVotes == 0) 50f else (project.p1Votes.toFloat() / totalVotes) * 100
-    val p2Percent = if (totalVotes == 0) 50f else (project.p2Votes.toFloat() / totalVotes) * 100
+    
+    val p1Percent = if (totalVotes <= 0) 50f else (project.p1Votes.toFloat() / totalVotes) * 100f
+    val p2Percent = if (totalVotes <= 0) 50f else (project.p2Votes.toFloat() / totalVotes) * 100f
 
     val labels = if (project.isHindi) {
         mapOf("votes" to "वोट", "undo" to "वापस लें", "reset" to "रीसेट", "total" to "कुल वोट")
@@ -142,8 +172,10 @@ fun ScoreboardScreen(viewModel: ScoreboardViewModel) {
                 Text("${String.format("%.1f", p2Percent)}%", color = Color(0xFFE57373), fontWeight = FontWeight.Bold)
             }
             Row(modifier = Modifier.fillMaxWidth().height(10.dp).padding(vertical = 4.dp)) {
-                Box(modifier = Modifier.weight(if(p1Percent == 0f) 0.01f else p1Percent).fillMaxHeight().background(Color(0xFF1976D2)))
-                Box(modifier = Modifier.weight(if(p2Percent == 0f) 0.01f else p2Percent).fillMaxHeight().background(Color(0xFFD32F2F)))
+                val w1 = if (p1Percent > 0f) p1Percent else 0.01f
+                val w2 = if (p2Percent > 0f) p2Percent else 0.01f
+                Box(modifier = Modifier.weight(w1).fillMaxHeight().background(Color(0xFF1976D2)))
+                Box(modifier = Modifier.weight(w2).fillMaxHeight().background(Color(0xFFD32F2F)))
             }
             Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Button(onClick = { viewModel.undo() }, colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text(labels["undo"]!!) }
