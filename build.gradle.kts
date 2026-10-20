@@ -1,27 +1,4 @@
-name: Build Android APK
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main, master ]
-jobs:
-  build:
-    name: Build Debug APK
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: Personal-Scoreboard-Voting-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+plugins {
+    id("com.android.application") version "8.1.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.8.22" apply false
+}
